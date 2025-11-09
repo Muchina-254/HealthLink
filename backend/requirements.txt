@@ -1,10 +1,6 @@
 fastapi
-uvicorn[standard]
-psycopg2-binary
-SQLAlchemy
-alembic
+uvicorn
+motor
+pydantic[email]
 python-dotenv
-joblib
-scikit-learn
-pydantic
-requests
+passlib[bcrypt]
