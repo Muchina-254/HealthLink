@@ -1,10 +1,9 @@
 fastapi
 uvicorn
-motor
-pydantic[email]
-python-dotenv
-passlib[bcrypt]
+pymongo
 joblib
 scikit-learn
-
-
+python-jose
+passlib[bcrypt]
+python-multipart
+pandas
