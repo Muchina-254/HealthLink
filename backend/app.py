@@ -1,4 +1,4 @@
-# app.py
+# backend/app.py
 import os
 from typing import Optional, List
 from datetime import datetime, timedelta
@@ -128,7 +128,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise credentials_exception
 
-def admin_required(current_user = Depends(get_current_user)):
+async def admin_required(current_user = Depends(get_current_user)):
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user
@@ -142,10 +142,9 @@ async def app_init():
     # Create a default admin user if none exists
     existing = await User.find_one(User.username == "admin")
     if not existing:
-        # admin_user = User(username="admin", email=None, hashed_password=get_password_hash("adminpass"), role="admin")
-        # await admin_user.insert()
-        pass 
-    
+        admin_user = User(username="admin", email=None, hashed_password=get_password_hash("adminpass"), role="admin")
+        await admin_user.insert()
+
 @app.get("/")
 async def root():
     return {"message": "HealthLink backend running."}
@@ -190,47 +189,51 @@ async def get_patient(pid: str):
         raise HTTPException(status_code=404, detail="Patient not found")
     return p
 
-# ========================
-# NEW: Update and Delete Patient Endpoints
-# ========================
-
-@app.put("/patients/{patient_id}")
+@app.put("/patients/{patient_id}", dependencies=[Depends(get_current_user)])
 async def update_patient(patient_id: str, updated_data: dict):
-    result = await db["patients"].update_one({"patient_id": patient_id}, {"$set": updated_data})
-    if result.matched_count == 0:
+    p = await Patient.find_one(Patient.patient_id == patient_id)
+    if not p:
         raise HTTPException(status_code=404, detail="Patient not found")
-    return {"message": "Patient updated successfully"}
+    # Update only provided fields
+    for k, v in updated_data.items():
+        if hasattr(p, k):
+            setattr(p, k, v)
+    await p.save()
+    return {"message": "Patient updated successfully", "patient": p}
 
-@app.delete("/patients/{patient_id}")
+@app.delete("/patients/{patient_id}", dependencies=[Depends(get_current_user)])
 async def delete_patient(patient_id: str):
-    result = await db["patients"].delete_one({"patient_id": patient_id})
-    if result.deleted_count == 0:
+    p = await Patient.find_one(Patient.patient_id == patient_id)
+    if not p:
         raise HTTPException(status_code=404, detail="Patient not found")
+    await p.delete()
     return {"message": "Patient deleted successfully"}
 
 # --- Encounters ---
-@app.post("/encounters")
-async def add_encounter(encounter: dict):
-    await db["encounters"].insert_one(encounter)
-    return {"message": "Encounter added"}
-@app.get("/encounters")
-async def list_encounters():
-    encounters = await db["encounters"].find().to_list(100)
-    return encounters
 @app.post("/encounters", dependencies=[Depends(get_current_user)])
 async def create_encounter(payload: EncounterIn, current_user = Depends(get_current_user)):
     vitals = payload.vitals or {}
     # parse common vitals (full hospital set)
-    temp = float(vitals.get("temp", 0) or 0)
-    rr = int(vitals.get("rr", 0) or 0)
-    hr = int(vitals.get("hr", 0) or 0)
-    spo2 = int(vitals.get("spo2", 100) or 100)
+    # Use safe casting with defaults
+    def to_float(x): 
+        try: return float(x)
+        except: return 0.0
+    def to_int(x):
+        try: return int(x)
+        except: return 0
+
+    temp = to_float(vitals.get("temp", 0))
+    rr = to_int(vitals.get("rr", 0))
+    hr = to_int(vitals.get("hr", 0))
+    spo2 = to_int(vitals.get("spo2", 100))
+
     # Simple rule-based triage (example)
     triage = "GREEN"
     if temp >= 39 or rr > 50 or spo2 < 91:
         triage = "RED"
     elif rr > 40 or temp >= 38.5 or spo2 < 95:
         triage = "YELLOW"
+
     # find patient name if available
     patient = await Patient.find_one(Patient.patient_id == payload.patient_id)
     patient_name = patient.name if patient else None
@@ -244,6 +247,11 @@ async def create_encounter(payload: EncounterIn, current_user = Depends(get_curr
     )
     await enc.insert()
     return enc
+
+@app.get("/encounters", dependencies=[Depends(get_current_user)])
+async def list_encounters():
+    encounters = await Encounter.find_all().sort("-created_at").to_list()
+    return encounters
 
 @app.get("/records", dependencies=[Depends(get_current_user)])
 async def get_records():
