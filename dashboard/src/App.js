@@ -1,25 +1,21 @@
+// src/App.js
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import LoginPage from "./pages/LoginPage";
-import Dashboard from "./pages/Dashboard";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import Overview from "./components/Overview";
+import Patients from "./components/Patients";
+import Login from "./components/Login"; // optional placeholder
 
-function App() {
-  const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-
+export default function App() {
   return (
-    <Router>
-      <Routes>
-        {!isLoggedIn ? (
-          <Route path="*" element={<LoginPage />} />
-        ) : (
-          <>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="*" element={<Navigate to="/dashboard" />} />
-          </>
-        )}
-      </Routes>
-    </Router>
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<Overview />} />
+          <Route path="/patients" element={<Patients />} />
+          <Route path="/login" element={<Login />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
   );
 }
-
-export default App;
